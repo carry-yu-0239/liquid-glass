@@ -260,6 +260,24 @@
     --pf-offset: 7px; --pf-blur: 14px; --pf-radius: 22px; /* 同样含视觉半径补偿 */
   }
   .photo-strip img { --pf-offset: 5px; --pf-blur: 10px; --pf-radius: 19px; }
+
+  /* ================= 移动端适配（≤ 640px） ================= */
+  @media (max-width: 640px) {
+    /* 固定导航：收窄内边距/间距/字号，保证 4 链接 + CTA 装进药丸（320px 屏也不溢出） */
+    .nav-inner { padding: 10px 16px; gap: 12px; }
+    .nav-links { gap: 12px; font-size: 14px; }
+    .nav-cta { padding: 6px 12px; font-size: 12px; }
+    /* Hero 玻璃按钮：窄屏允许换行，负外边距同步减小 */
+    .hero-actions { flex-wrap: wrap; gap: 18px; margin-bottom: -70px; }
+    .btn-lg button { padding: 15px 32px; font-size: 15px; }
+    /* 控制台：收窄内边距；滑杆触控目标从 20px 提到 32px（轨道仍居中，玻璃球同步对齐） */
+    .panel-inner { padding: 24px 20px; }
+    .ctl input[type="range"] { height: 32px; }
+    /* 徽章：限制最大宽度，窄屏允许换行收缩 */
+    .mode-badge { max-width: calc(100vw - 32px); font-size: 11px; }
+    /* 锚点跳转时避开固定导航遮挡 */
+    .hero, #light, #drag, #panel { scroll-margin-top: 92px; }
+  }
 </style>
 </head>
 <body>
