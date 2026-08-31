@@ -1,0 +1,447 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>液态玻璃 · 原理验证页 | Liquid Glass Demo</title>
+<style>
+  :root {
+    --dark: #0C0A09;
+    --dark2: #16130F;
+    --ink: #E8E3D8;
+    --gold: #D4AF37;
+    --red: #C8102E;
+    --teal: #6FA8B5;
+    --green: #5B9E7D;
+    --paper: #F3EEE3;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { overflow-x: clip; }
+  body {
+    font-family: "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
+    background: var(--dark);
+    color: var(--ink);
+    line-height: 1.7;
+  }
+
+  /* ================= 复杂背景：多彩网格渐变（给折射/色散提供高对比素材） ================= */
+  .bg {
+    position: fixed; inset: 0; z-index: -1;
+    background:
+      radial-gradient(640px 460px at 10% 6%, rgba(200, 16, 46, .55), transparent 66%),
+      radial-gradient(720px 520px at 90% 14%, rgba(212, 175, 55, .38), transparent 66%),
+      radial-gradient(820px 620px at 72% 88%, rgba(46, 110, 138, .45), transparent 62%),
+      radial-gradient(520px 420px at 16% 82%, rgba(91, 158, 125, .34), transparent 62%),
+      #0C0A09;
+  }
+  .bg::after {
+    content: ""; position: absolute; inset: 0;
+    background:
+      repeating-linear-gradient(0deg, rgba(255,255,255,.045) 0 1px, transparent 1px 56px),
+      repeating-linear-gradient(90deg, rgba(255,255,255,.045) 0 1px, transparent 1px 56px);
+    mask-image: radial-gradient(1200px 800px at 50% 30%, #000 30%, transparent 90%);
+  }
+
+  /* ================= 固定玻璃导航（toolbar 变体，滚到跑马灯上时折射最明显） ================= */
+  .nav {
+    position: fixed; top: 18px; left: 50%; transform: translateX(-50%);
+    width: min(720px, calc(100% - 32px)); z-index: 50;
+    border-radius: 999px;
+  }
+  .nav-inner {
+    display: flex; align-items: center; gap: 22px;
+    padding: 12px 22px;
+  }
+  .nav-brand { font-family: "Noto Serif SC", "SimSun", serif; font-weight: 900; font-size: 19px; color: var(--gold); letter-spacing: 2px; }
+  .nav-links { display: flex; gap: 18px; margin-left: auto; font-size: 13.5px; }
+  .nav-links a { color: rgba(232,227,216,.85); text-decoration: none; transition: color .16s; }
+  .nav-links a:hover { color: #fff; }
+  .nav-cta {
+    border: none; cursor: pointer; border-radius: 999px;
+    padding: 7px 16px; font-size: 13px; font-weight: 600;
+    color: #1A140C; background: linear-gradient(135deg, #E9C96A, var(--gold));
+  }
+
+  main { max-width: 1080px; margin: 0 auto; padding: 0 20px; }
+
+  /* ================= Hero ================= */
+  .hero { padding: 150px 0 0; text-align: center; position: relative; }
+  .hero-kicker {
+    display: inline-block; font-size: 12.5px; letter-spacing: 6px; color: var(--gold);
+    border: 1px solid rgba(212,175,55,.4); border-radius: 999px; padding: 5px 16px; margin-bottom: 26px;
+  }
+  .hero h1 {
+    font-family: "Noto Serif SC", "SimSun", serif; font-weight: 900;
+    font-size: clamp(56px, 11vw, 128px); line-height: 1.08; letter-spacing: 6px;
+    background: linear-gradient(160deg, #FBF3DC 20%, var(--gold) 60%, #A9802B 95%);
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  .hero p { max-width: 620px; margin: 22px auto 0; color: rgba(232,227,216,.78); font-size: 15.5px; }
+  .hero p b { color: var(--gold); font-weight: 600; }
+
+  .hero-actions {
+    position: relative; z-index: 2;
+    display: flex; justify-content: center; align-items: center; gap: 26px;
+    margin-top: 64px; margin-bottom: -96px;
+  }
+  .btn-lg { border-radius: 999px; }
+  .btn-lg button {
+    border: none; cursor: pointer; border-radius: 999px;
+    padding: 18px 44px; font-size: 17px; font-weight: 700; letter-spacing: 2px;
+    color: #FFF6E3; background: rgba(200, 16, 46, .38);
+    text-shadow: 0 1px 6px rgba(0,0,0,.4);
+    transition: background .18s;
+  }
+  .btn-lg button:hover { background: rgba(200, 16, 46, .55); }
+  .btn-round { border-radius: 999px; }
+  .btn-round button {
+    width: 76px; height: 76px; border: none; cursor: pointer; border-radius: 999px;
+    font-family: "Noto Serif SC", serif; font-size: 30px; font-weight: 900;
+    color: var(--gold); background: transparent;
+  }
+
+  /* ================= 跑马灯：大号描边文字从玻璃下滚过 ================= */
+  .marquee {
+    overflow: hidden; padding: 64px 0 30px; user-select: none;
+    -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+    mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
+  }
+  .marquee-track { display: flex; width: max-content; animation: mq 30s linear infinite; }
+  .marquee-seq { display: flex; align-items: baseline; white-space: nowrap; }
+  .marquee span {
+    font-family: "Noto Serif SC", "SimSun", serif; font-weight: 900;
+    font-size: clamp(64px, 10vw, 118px); line-height: 1.15; padding-right: 34px;
+  }
+  .m-fill  { color: rgba(232,227,216,.92); }
+  .m-stroke { color: transparent; -webkit-text-stroke: 2px rgba(212,175,55,.85); }
+  .m-red   { color: rgba(200,16,46,.9); }
+  @keyframes mq { to { transform: translateX(-50%); } }
+  @media (prefers-reduced-motion: reduce) { .marquee-track { animation: none; } }
+
+  /* ================= 浅色带：高密度正文 + 照片（深色玻璃压在浅底上） ================= */
+  .band-light {
+    background: var(--paper); color: #17120C;
+    border-radius: 14px; padding: 52px 54px; margin-top: 64px;
+  }
+  .band-light h2 { font-family: "Noto Serif SC", serif; font-size: 26px; letter-spacing: 3px; margin-bottom: 8px; }
+  .band-light .sub { font-size: 13px; color: rgba(23,18,12,.55); margin-bottom: 26px; letter-spacing: 1px; }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 34px; font-size: 14px; color: rgba(23,18,12,.82); }
+  @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } .band-light { padding: 34px 26px; } }
+
+  .photo-strip { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 34px; }
+  @media (max-width: 720px) { .photo-strip { grid-template-columns: 1fr 1fr; } }
+  .photo-strip img {
+    width: 100%; height: 190px; object-fit: cover; border-radius: 10px; display: block;
+    filter: saturate(1.15) contrast(1.02);
+  }
+  /* 玻璃药丸横跨两张照片的接缝——观察照片边缘在玻璃边框处的弯曲 */
+  .photo-chip {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    z-index: 5; border-radius: 999px;
+  }
+  .photo-chip .chip-label {
+    display: flex; align-items: center; gap: 8px; padding: 11px 22px;
+    font-size: 13.5px; font-weight: 700; letter-spacing: 2px; color: #FFF;
+  }
+  .photo-chip .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--gold); }
+
+  /* ================= 拖拽舞台：高密度彩色文字 + 可拖动玻璃圆钮 ================= */
+  .band-drag { margin-top: 72px; text-align: center; }
+  .band-drag h2 { font-family: "Noto Serif SC", serif; font-size: 24px; letter-spacing: 3px; }
+  .band-drag .sub { font-size: 13.5px; color: rgba(232,227,216,.6); margin: 8px 0 22px; }
+  .stage {
+    position: relative; overflow: hidden; border-radius: 14px;
+    height: 360px; border: 1px solid rgba(255,255,255,.08);
+    background: rgba(12,10,9,.5);
+  }
+  .stage-text { position: absolute; inset: 0; padding: 10px 18px; }
+  .sline {
+    white-space: nowrap; overflow: hidden; text-overflow: clip;
+    font-size: 21px; font-weight: 800; line-height: 1.75; letter-spacing: 1px;
+  }
+  .drag-glass {
+    position: absolute; left: 50%; top: 50%; margin: -52px 0 0 -52px;
+    width: 104px; height: 104px; border-radius: 999px;
+    cursor: grab; touch-action: none; z-index: 6;
+  }
+  .drag-glass.dragging { cursor: grabbing; }
+  .drag-glass .drag-label {
+    width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
+    font-family: "Noto Serif SC", serif; font-size: 40px; font-weight: 900; color: #FBEFD3;
+    text-shadow: 0 1px 8px rgba(0,0,0,.35); user-select: none;
+  }
+
+  /* ================= 控制台（本身也是一块玻璃面板） ================= */
+  .band-panel { margin: 72px 0 90px; }
+  .panel { display: block; border-radius: 16px; }
+  .panel-inner { padding: 30px 34px; }
+  .panel-inner h2 { font-family: "Noto Serif SC", serif; font-size: 21px; letter-spacing: 3px; margin-bottom: 4px; color: #FBEFD3; }
+  .panel-inner .sub { font-size: 12.5px; color: rgba(232,227,216,.62); margin-bottom: 20px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: center; }
+  .ctl { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: rgba(232,227,216,.9); }
+  .ctl input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--gold); cursor: pointer; }
+  .ctl input[type="range"] { width: 170px; accent-color: var(--gold); cursor: pointer; }
+  .ctl output { font-variant-numeric: tabular-nums; color: var(--gold); font-weight: 700; min-width: 3ch; }
+  .panel-note { margin-top: 18px; font-size: 12px; color: rgba(232,227,216,.5); }
+  .panel-note code { color: rgba(212,175,55,.85); font-family: Consolas, monospace; }
+
+  /* ================= 原理速览 ================= */
+  .band-how { margin-bottom: 90px; }
+  .band-how h2 { font-family: "Noto Serif SC", serif; font-size: 22px; letter-spacing: 3px; margin-bottom: 18px; }
+  .how-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .how-card {
+    border: 1px solid rgba(255,255,255,.09); border-radius: 12px;
+    padding: 18px 20px; background: rgba(22,19,15,.55);
+  }
+  .how-card h3 { font-size: 14.5px; color: var(--gold); margin-bottom: 6px; letter-spacing: 1px; }
+  .how-card p { font-size: 12.5px; color: rgba(232,227,216,.72); }
+  .how-card code { color: rgba(111,168,181,.95); font-family: Consolas, monospace; font-size: 11.5px; }
+
+  /* ================= 模式徽章 ================= */
+  .mode-badge {
+    position: fixed; right: 16px; bottom: 16px; z-index: 60;
+    font-size: 12px; letter-spacing: .5px; padding: 8px 14px; border-radius: 999px;
+    background: rgba(12,10,9,.82); border: 1px solid rgba(212,175,55,.45); color: var(--gold);
+    backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  }
+  .mode-badge.ok { border-color: rgba(91,158,125,.6); color: #A9D8BF; }
+
+  footer { text-align: center; padding: 0 0 90px; font-size: 12px; color: rgba(232,227,216,.4); }
+</style>
+</head>
+<body>
+
+<div class="bg" aria-hidden="true"></div>
+
+<!-- 固定玻璃导航：滚过下方跑马灯/正文时，观察文字在玻璃边缘的弯曲 -->
+<liquid-glass class="nav" data-blur="7" data-thickness="0.45" data-dispersion="0.1">
+  <nav class="nav-inner">
+    <span class="nav-brand">液态玻璃</span>
+    <div class="nav-links">
+      <a href="#hero">折射</a>
+      <a href="#light">色散</a>
+      <a href="#drag">高光</a>
+      <a href="#panel">控制台</a>
+    </div>
+    <button class="nav-cta" onclick="document.getElementById('panel').scrollIntoView({behavior:'smooth'})">验证模式</button>
+  </nav>
+</liquid-glass>
+
+<main>
+
+  <!-- Hero：大标题上压着两颗玻璃按钮，静态即可观察透镜折射 -->
+  <section class="hero" id="hero">
+    <span class="hero-kicker">LIQUID GLASS · iOS 26 材质复刻</span>
+    <h1>液态玻璃</h1>
+    <p>
+      不是 <b>backdrop-filter: blur</b> 的毛玻璃，而是 <b>Snell 折射定律的逐像素解析解</b>：
+      平板玻璃 + 圆角倒角的真实几何，倾角 sinθ₁ = 1 − d/r，所见偏移
+      <b>Δ = z(d)·sinθ₁/√(n²−sin²₁)</b>。平坦中心<b>物理零畸变</b>，倒角带把玻璃足迹之外的背景
+      拉入边缘；分谱折射率 n<sub>蓝</sub>＞n<sub>红</sub> 使<b>红边在外、蓝边在内</b>。转动控制台的折射率滑杆，
+      看边缘弯折随 n 实时变化。
+    </p>
+    <div class="hero-actions">
+      <liquid-glass class="btn-lg" data-blur="4" data-bezel="0.42" data-dispersion="0.14">
+        <button type="button" onclick="document.getElementById('panel').scrollIntoView({behavior:'smooth'})">开 始 验 证</button>
+      </liquid-glass>
+      <liquid-glass class="btn-round" data-blur="3" data-thickness="0.62" data-bezel="0.28" data-dispersion="0.18" data-glow="on">
+        <button type="button" title="圆形玻璃：折射集中在圆周边缘" onclick="document.getElementById('drag').scrollIntoView({behavior:'smooth'})">龍</button>
+      </liquid-glass>
+    </div>
+  </section>
+
+  <!-- 跑马灯：描边大字持续从固定玻璃导航与按钮下方滚过 -->
+  <div class="marquee" aria-hidden="true">
+    <div class="marquee-track">
+      <div class="marquee-seq">
+        <span class="m-stroke">LIQUID GLASS</span><span class="m-fill">透镜折射</span><span class="m-red">色散</span><span class="m-stroke">LENSING</span><span class="m-fill">镜面高光</span><span class="m-red">SPECULAR</span>
+      </div>
+      <div class="marquee-seq">
+        <span class="m-stroke">LIQUID GLASS</span><span class="m-fill">透镜折射</span><span class="m-red">色散</span><span class="m-stroke">LENSING</span><span class="m-fill">镜面高光</span><span class="m-red">SPECULAR</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 浅色带：深色玻璃药丸横跨照片接缝，观察照片边缘的弯曲与彩虹细边 -->
+  <section class="band-light" id="light">
+    <h2>观察点一 · 折射与色散</h2>
+    <p class="sub">玻璃药丸横跨两张照片的接缝 —— 倒角带按 Snell 定律把接缝两侧的照片拉入边缘（物理上红端位移最大），中心零畸变。</p>
+    <div class="cols">
+      <p>
+        真实平板玻璃只有在表面倾斜时才会弯折光线。组件按「平板 + 圆角倒角」几何逐像素解算：
+        距边缘 d 处的表面倾角 sinθ₁ = 1 − d/r，经 Snell 定律 sinθ₂ = sinθ₁/n 折转后，
+        你在该点看到的是 z(d)·tanθ₂ 之外的内容——所以玻璃中心完全通透（物理零畸变），
+        而边缘像一圈把外界拉进来的环形透镜。
+      </p>
+      <p>
+        色散同样来自折射率本身：n<sub>蓝</sub>＞n<sub>绿</sub>＞n<sub>红</sub>，tanθ₂ = sinθ₁/√(n²−sin²₁)
+        随 n 增大而减小——所以<b>红端图像被推得最远、蓝端最近</b>，倒角带由外向内呈现红→绿→蓝的物理排序。
+        拖动控制台的折射率滑杆（水 1.33 → 玻璃 1.5 → 蓝宝石 1.77），边缘弯折会实时跟随 Snell 解变化。
+      </p>
+    </div>
+    <div class="photo-strip">
+      <img src="../images/dragon-through-flowers.jpg" alt="花树下的火龙">
+      <img src="../images/fireworks-fire-dragon.jpg" alt="烟花中的火龙">
+      <img src="../images/dragon-dance-demo.jpg" alt="舞龙演示">
+      <liquid-glass class="photo-chip" data-blur="3" data-dispersion="0.14">
+        <span class="chip-label"><span class="dot"></span>玻璃横跨照片接缝</span>
+      </liquid-glass>
+    </div>
+  </section>
+
+  <!-- 拖拽舞台：拖动玻璃圆钮划过高密度彩色文字 -->
+  <section class="band-drag" id="drag">
+    <h2>观察点二 · 液体交互</h2>
+    <p class="sub">按住玻璃圆钮在彩色文字上拖动 —— 移动时整圈边缘都在折射，松手有按压回弹；指针悬停时边缘 glint 会转向指针方位（光随视角打在倒角上）。</p>
+    <div class="stage" id="stage">
+      <div class="stage-text" id="stageText" aria-hidden="true"></div>
+      <liquid-glass class="drag-glass" id="dragGlass" data-blur="3" data-thickness="0.62" data-bezel="0.26" data-dispersion="0.16">
+        <span class="drag-label">拖我</span>
+      </liquid-glass>
+    </div>
+  </section>
+
+  <!-- 控制台 -->
+  <section class="band-panel" id="panel">
+    <liquid-glass class="panel" data-blur="16" data-thickness="0.22" data-bezel="0.15" data-dispersion="0.05">
+      <div class="panel-inner">
+        <h2>控制台</h2>
+        <p class="sub">参数实时热切换（LiquidGlass.setOptions），关闭折射即可与普通毛玻璃直接对比。</p>
+        <div class="controls" id="panelControls">
+          <label class="ctl"><input type="checkbox" id="chkRefraction" checked> 物理折射</label>
+          <label class="ctl"><input type="checkbox" id="chkAberration" checked> 色散（分谱 IOR）</label>
+          <label class="ctl"><input type="checkbox" id="chkGlow" checked> 指针高光</label>
+          <label class="ctl">折射率 n <input type="range" id="rngIor" min="1.1" max="1.9" step="0.01" value="1.5"><output id="outIor">1.50</output></label>
+          <label class="ctl">色散宽度 <input type="range" id="rngDisp" min="0" max="0.5" step="0.02" value="0.18"><output id="outDisp">0.18</output></label>
+          <label class="ctl">物理倍率 <input type="range" id="rngStrength" min="0.2" max="2" step="0.05" value="1"><output id="outStrength">1.00</output></label>
+        </div>
+        <p class="panel-note">
+          n=1.5 为冕牌玻璃，1.33≈水、1.77≈蓝宝石；倍率 1.0 即严格 Snell 解。
+          组件：<code>liquid-glass/liquid-glass.js</code>（零依赖，&lt;liquid-glass&gt; 自定义元素 / <code>new LiquidGlass(el, opts)</code> 两种用法）。
+          <code>backdrop-filter: url(#svg)</code> 目前仅 Chromium 可靠；Safari / Firefox 自动降级为纯 blur 毛玻璃（见右下角徽章）。
+        </p>
+      </div>
+    </liquid-glass>
+  </section>
+
+  <!-- 原理速览 -->
+  <section class="band-how">
+    <h2>原理速览 · 一块玻璃的六个层</h2>
+    <div class="how-grid">
+      <div class="how-card"><h3>① 背景采样</h3><p><code>backdrop-filter</code> 拿到玻璃下方的真实像素，一切效果的原材料。</p></div>
+      <div class="how-card"><h3>② Snell 折射</h3><p>倒角几何 sinθ₁=1−d/r → <code>Δ=z·sinθ₁/√(n²−sin²₁)</code>，平坦中心零畸变，边缘把足迹外的背景拉入。</p></div>
+      <div class="how-card"><h3>③ 分谱色散</h3><p>n<sub>蓝</sub>＞n<sub>红</sub>，每通道独立解 Snell，红端图像位移最大，边缘呈外红内蓝的物理排序。</p></div>
+      <div class="how-card"><h3>④ 磨砂增艳</h3><p><code>blur() saturate() brightness()</code> 模拟光散射与环境色透入玻璃。</p></div>
+      <div class="how-card"><h3>⑤ 镜面高光</h3><p>锥形光谱环：crisp 描边 + 主/次 glint 随指针方位旋转，glint 两侧带暖→冷光谱微染。</p></div>
+      <div class="how-card"><h3>⑥ 液体反馈</h3><p>按压 <code>scale(.965)</code> spring 回弹；内容层独立于滤镜，文字永不扭曲。</p></div>
+    </div>
+  </section>
+
+  <footer>智汇龙腾 · Liquid Glass 原理验证页 —— 独立实验，不影响主站 index.html</footer>
+</main>
+
+<div class="mode-badge" id="modeBadge">检测渲染模式中…</div>
+
+<script src="./liquid-glass.js?v=8" defer></script>
+<script defer>
+  /* 舞台高密度彩色文字：色相跳变越频繁，边缘色散越容易被看见 */
+  (function () {
+    var colors = ['#D4AF37', '#C8102E', '#6FA8B5', '#E8E3D8', '#5B9E7D'];
+    var words = '喬林煙花火龍 · LIQUID GLASS · 透鏡折射 · DISPERSION · 鎏金朱砂 · LENSING · 夜色新中式 · SPECULAR · ';
+    var html = '';
+    for (var i = 0; i < 20; i++) {
+      html += '<div class="sline" style="color:' + colors[i % colors.length] + '">' + words + '第 ' + ('0' + (i + 1)).slice(-2) + ' 行</div>';
+    }
+    document.getElementById('stageText').innerHTML = html;
+  })();
+
+  /* 控制台 → 全部玻璃实例热切换 */
+  window.addEventListener('load', function () {
+    var items = Array.prototype.map.call(document.querySelectorAll('liquid-glass'), function (el) {
+      return {
+        lg: el._lg,
+        baseRefr: parseFloat(el.dataset.refraction || '1'),
+        baseDisp: el.dataset.dispersion === undefined ? 0.08 : parseFloat(el.dataset.dispersion)
+      };
+    });
+
+    var chkRefr = document.getElementById('chkRefraction');
+    var chkAb = document.getElementById('chkAberration');
+    var chkGlow = document.getElementById('chkGlow');
+    var rngIor = document.getElementById('rngIor');
+    var rngDisp = document.getElementById('rngDisp');
+    var rng = document.getElementById('rngStrength');
+    var outIor = document.getElementById('outIor');
+    var outDisp = document.getElementById('outDisp');
+    var out = document.getElementById('outStrength');
+
+    function apply() {
+      var ior = parseFloat(rngIor.value);
+      var disp = parseFloat(rngDisp.value);
+      var mul = parseFloat(rng.value);
+      outIor.textContent = ior.toFixed(2);
+      outDisp.textContent = disp.toFixed(2);
+      out.textContent = mul.toFixed(2);
+      items.forEach(function (it) {
+        if (!it.lg) return;
+        it.lg.setOptions({
+          refraction: chkRefr.checked ? it.baseRefr * mul : 0,
+          ior: ior,
+          dispersion: chkAb.checked ? disp : 0,
+          pointerGlow: chkGlow.checked
+        });
+      });
+    }
+    document.getElementById('panelControls').addEventListener('input', apply);
+    document.getElementById('panelControls').addEventListener('change', apply);
+    apply(); // 载入即同步一次滑杆状态(顺带强制一轮重建,消除初始化竞态)
+
+    /* 渲染模式徽章（含组件版本，方便识别浏览器缓存的是否为旧文件） */
+    setTimeout(function () {
+      var badge = document.getElementById('modeBadge');
+      var v = '组件 v' + (window.LiquidGlass && window.LiquidGlass.version || '?');
+      var mode = items[0] && items[0].lg && items[0].lg.mode;
+      if (mode === 'refraction') {
+        badge.textContent = '✓ 折射模式 · feDisplacementMap（Snell 解）· ' + v;
+        badge.classList.add('ok');
+      } else {
+        badge.textContent = '✗ 基础模式 · blur 降级 · ' + v + ' · 请 Ctrl+F5 强制刷新';
+      }
+    }, 200);
+  });
+
+  /* 拖拽玻璃圆钮：用 CSS translate 属性移动，避免与按压缩放的 transform 冲突 */
+  (function () {
+    var glass = document.getElementById('dragGlass');
+    var stage = document.getElementById('stage');
+    var dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+
+    glass.addEventListener('pointerdown', function (e) {
+      dragging = true;
+      glass.setPointerCapture(e.pointerId);
+      sx = e.clientX - ox; sy = e.clientY - oy;
+      glass.classList.add('dragging');
+      e.preventDefault();
+    });
+    glass.addEventListener('pointermove', function (e) {
+      if (!dragging) return;
+      var sRect = stage.getBoundingClientRect();
+      var gRect = glass.getBoundingClientRect();
+      var nx = e.clientX - sx, ny = e.clientY - sy;
+      // 限制在舞台内（相对初始位置计算偏移）
+      var minX = ox + (sRect.left - gRect.left) - 4, maxX = ox + (sRect.right - gRect.right) + 4;
+      var minY = oy + (sRect.top - gRect.top) - 4, maxY = oy + (sRect.bottom - gRect.bottom) + 4;
+      ox = Math.min(Math.max(nx, minX), maxX);
+      oy = Math.min(Math.max(ny, minY), maxY);
+      glass.style.translate = ox + 'px ' + oy + 'px';
+    });
+    ['pointerup', 'pointercancel'].forEach(function (t) {
+      glass.addEventListener(t, function () {
+        dragging = false;
+        glass.classList.remove('dragging');
+      });
+    });
+  })();
+</script>
+</body>
+</html>
