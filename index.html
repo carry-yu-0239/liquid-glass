@@ -49,12 +49,12 @@
     border-radius: 999px;
   }
   .nav-inner {
-    display: flex; align-items: center; gap: 22px;
+    display: flex; align-items: center; justify-content: center; gap: 22px;
     padding: 12px 22px;
   }
   .nav-brand { font-family: "Noto Serif SC", "SimSun", serif; font-weight: 900; font-size: 19px; color: var(--gold); letter-spacing: 2px; }
-  .nav-links { display: flex; gap: 18px; margin-left: auto; font-size: 13.5px; }
-  .nav-links a { color: rgba(232,227,216,.85); text-decoration: none; transition: color .16s; }
+  .nav-links { display: flex; gap: 18px; font-size: 15.5px; }
+  .nav-links a { color: rgba(232,227,216,.92); text-decoration: none; transition: color .16s; font-weight: 700; letter-spacing: 1px; }
   .nav-links a:hover { color: #fff; }
   .nav-cta {
     border: none; cursor: pointer; border-radius: 999px;
@@ -128,12 +128,14 @@
   .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 34px; font-size: 14px; color: rgba(23,18,12,.82); }
   @media (max-width: 720px) { .cols { grid-template-columns: 1fr; } .band-light { padding: 34px 26px; } }
 
-  .photo-strip { position: relative; display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 34px; }
+  .photo-strip { position: relative; display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 34px; }
   @media (max-width: 720px) { .photo-strip { grid-template-columns: 1fr 1fr; } }
   .photo-strip img {
     width: 100%; height: 190px; object-fit: cover; border-radius: 10px; display: block;
     filter: saturate(1.15) contrast(1.02);
   }
+  .photo-strip img.pf-squircle { border-radius: var(--pf-radius); }
+  .how-card.pf-raised { background-color: transparent; } /* 让拟态渐变面接管底色，避免双层底色发灰 */
   /* 玻璃药丸横跨两张照片的接缝——观察照片边缘在玻璃边框处的弯曲 */
   .photo-chip {
     position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
@@ -141,7 +143,7 @@
   }
   .photo-chip .chip-label {
     display: flex; align-items: center; gap: 8px; padding: 11px 22px;
-    font-size: 13.5px; font-weight: 700; letter-spacing: 2px; color: #FFF;
+    font-size: 13.5px; font-weight: 700; letter-spacing: 2px; color: #000;
   }
   .photo-chip .dot { width: 8px; height: 8px; border-radius: 999px; background: var(--gold); }
 
@@ -157,6 +159,7 @@
   .stage-text { position: absolute; inset: 0; padding: 10px 18px; }
   .sline {
     white-space: nowrap; overflow: hidden; text-overflow: clip;
+    font-family: "Noto Serif SC", "SimSun", serif;
     font-size: 21px; font-weight: 800; line-height: 1.75; letter-spacing: 1px;
   }
   .drag-glass {
@@ -180,7 +183,29 @@
   .controls { display: flex; flex-wrap: wrap; gap: 14px 26px; align-items: center; }
   .ctl { display: flex; align-items: center; gap: 8px; font-size: 13.5px; color: rgba(232,227,216,.9); }
   .ctl input[type="checkbox"] { width: 16px; height: 16px; accent-color: var(--gold); cursor: pointer; }
-  .ctl input[type="range"] { width: 170px; accent-color: var(--gold); cursor: pointer; }
+  /* 滑杆：轨道细线化，原生圆点隐藏，改用液态玻璃球叠加在滑杆位置上方 */
+  .rng { position: relative; display: inline-flex; align-items: center; }
+  .ctl input[type="range"] {
+    -webkit-appearance: none; appearance: none;
+    width: 170px; height: 20px; background: transparent; cursor: pointer;
+  }
+  .ctl input[type="range"]:focus { outline: none; }
+  .ctl input[type="range"]::-webkit-slider-runnable-track {
+    height: 3px; border-radius: 999px;
+    /* 已拖过的进度段保持金色（--p 由 JS 随滑杆值实时更新） */
+    background: linear-gradient(90deg, var(--gold) var(--p, 50%), rgba(232,227,216,.28) var(--p, 50%));
+  }
+  .ctl input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 20px; height: 20px; margin-top: -8.5px;
+    border: none; border-radius: 999px; background: transparent;
+  }
+  .ctl input[type="range"]::-moz-range-track { height: 3px; border-radius: 999px; background: rgba(232,227,216,.28); }
+  .ctl input[type="range"]::-moz-range-progress { height: 3px; border-radius: 999px; background: var(--gold); }
+  .ctl input[type="range"]::-moz-range-thumb { width: 20px; height: 20px; border: none; border-radius: 999px; background: transparent; }
+  .rng-ball {
+    position: absolute; left: 0; top: 50%; width: 20px; height: 20px; margin-top: -10px;
+    border-radius: 999px; pointer-events: none;
+  }
   .ctl output { font-variant-numeric: tabular-nums; color: var(--gold); font-weight: 700; min-width: 3ch; }
   .panel-note { margin-top: 18px; font-size: 12px; color: rgba(232,227,216,.5); }
   .panel-note code { color: rgba(212,175,55,.85); font-family: Consolas, monospace; }
@@ -205,8 +230,36 @@
     backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   }
   .mode-badge.ok { border-color: rgba(91,158,125,.6); color: #A9D8BF; }
+  /* 小徽章不套渐变面，保留原深色底 + 磨砂，只取外双影与连续曲率 */
+  .mode-badge.pf-raised { background-image: none; --pf-offset: 5px; --pf-blur: 10px; --pf-radius: 20px; }
 
   footer { text-align: center; padding: 0 0 90px; font-size: 12px; color: rgba(232,227,216,.4); }
+
+  /* ================= 美拟（parfait）：拟态双影 × corner-shape 连续曲率 =================
+     拟态只用 box-shadow + background，corner-shape 带着阴影一起变形，零冲突；
+     红线：美拟元素禁用 clip-path（会把盒外阴影一并裁掉）。
+     光源统一：亮影在左上、暗影在右下；模糊 = 2 × 偏移，spread 恒为 0 */
+  .pf-squircle { border-radius: var(--pf-radius, 16px); }
+  @supports (corner-shape: squircle) {
+    .pf-squircle { corner-shape: superellipse(2); }  /* squircle 恒等于 superellipse(2) */
+  }
+  .pf-raised {
+    background-image: linear-gradient(145deg, var(--pf-dark), var(--pf-surface));
+    box-shadow: var(--pf-offset) var(--pf-offset) var(--pf-blur) var(--pf-dark),
+                calc(-1 * var(--pf-offset)) calc(-1 * var(--pf-offset)) var(--pf-blur) var(--pf-light);
+  }
+
+  /* 浅色纸面区域：纸色同色系色板（暗影 ≈ 底色×0.8，亮影推向暖白） */
+  .band-light {
+    --pf-dark: #C9C0AC; --pf-light: #FFFDF4; --pf-surface: #F9F4E9;
+    --pf-offset: 8px; --pf-blur: 16px; --pf-radius: 26px; /* squircle 视觉半径补偿 */
+  }
+  /* 深色底上的元素：深色拟态色板（暗影≈底色×0.78，亮影≈底色向暖白混 8%） */
+  .how-card, .mode-badge, .photo-strip img {
+    --pf-dark: rgba(0,0,0,.65); --pf-light: rgba(255,240,214,.08); --pf-surface: #1E1913;
+    --pf-offset: 7px; --pf-blur: 14px; --pf-radius: 22px; /* 同样含视觉半径补偿 */
+  }
+  .photo-strip img { --pf-offset: 5px; --pf-blur: 10px; --pf-radius: 19px; }
 </style>
 </head>
 <body>
@@ -216,7 +269,6 @@
 <!-- 固定玻璃导航：滚过下方跑马灯/正文时，观察文字在玻璃边缘的弯曲 -->
 <liquid-glass class="nav" data-blur="7" data-thickness="0.45" data-dispersion="0.1">
   <nav class="nav-inner">
-    <span class="nav-brand">液态玻璃</span>
     <div class="nav-links">
       <a href="#hero">折射</a>
       <a href="#light">色散</a>
@@ -231,14 +283,14 @@
 
   <!-- Hero：大标题上压着两颗玻璃按钮，静态即可观察透镜折射 -->
   <section class="hero" id="hero">
-    <span class="hero-kicker">LIQUID GLASS · iOS 26 材质复刻</span>
     <h1>液态玻璃</h1>
     <p>
-      不是 <b>backdrop-filter: blur</b> 的毛玻璃，而是 <b>Snell 折射定律的逐像素解析解</b>：
-      平板玻璃 + 圆角倒角的真实几何，倾角 sinθ₁ = 1 − d/r，所见偏移
-      <b>Δ = z(d)·sinθ₁/√(n²−sin²₁)</b>。平坦中心<b>物理零畸变</b>，倒角带把玻璃足迹之外的背景
-      拉入边缘；分谱折射率 n<sub>蓝</sub>＞n<sub>红</sub> 使<b>红边在外、蓝边在内</b>。转动控制台的折射率滑杆，
-      看边缘弯折随 n 实时变化。
+      它不是普通的模糊磨砂玻璃，而是一块会<b>弯折光线的真实透镜</b>：玻璃边缘带着一圈倒角，
+      背景透过倒角时像穿过真正的玻璃一样发生折射，弯曲程度由物理学中的<b>Snell 折射定律</b>
+      逐像素精确计算。玻璃中心完全平坦，<b>通透零畸变</b>；只有边缘的环形倒角带，
+      会把玻璃之外的背景「拉」进边缘。不同颜色的光折射能力不同，
+      因此边缘还会析出一条 <b>外红内蓝</b> 的彩虹细边——和棱镜分光是同一个原理。
+      转动控制台的折射率滑杆，从水到蓝宝石，边缘弯折会实时跟着变化。
     </p>
     <div class="hero-actions">
       <liquid-glass class="btn-lg" data-blur="4" data-bezel="0.42" data-dispersion="0.14">
@@ -263,7 +315,7 @@
   </div>
 
   <!-- 浅色带：深色玻璃药丸横跨照片接缝，观察照片边缘的弯曲与彩虹细边 -->
-  <section class="band-light" id="light">
+  <section class="band-light pf-squircle pf-raised" id="light">
     <h2>观察点一 · 折射与色散</h2>
     <p class="sub">玻璃药丸横跨两张照片的接缝 —— 倒角带按 Snell 定律把接缝两侧的照片拉入边缘（物理上红端位移最大），中心零畸变。</p>
     <div class="cols">
@@ -280,9 +332,10 @@
       </p>
     </div>
     <div class="photo-strip">
-      <img src="assets/img/greyson-joralemon-9IBqihqhuHc-unsplash.jpg" alt="花树下的火龙">
-      <img src="assets/img/jimmy-woo-XLQhjbuFhDo-unsplash.jpg" alt="烟花中的火龙">
-      <img src="assets/img/raimond-klavins-L6jxljMeUoo-unsplash.jpg" alt="舞龙演示">
+      <img src="assets/img/greyson-joralemon-9IBqihqhuHc-unsplash.jpg" alt="花树下的火龙" class="pf-squircle pf-raised">
+      <img src="assets/img/jimmy-woo-XLQhjbuFhDo-unsplash.jpg" alt="烟花中的火龙" class="pf-squircle pf-raised">
+      <img src="assets/img/raimond-klavins-L6jxljMeUoo-unsplash.jpg" alt="舞龙演示" class="pf-squircle pf-raised">
+      <img src="assets/img/brecht-corbeel-BvAwzPQRRis-unsplash.jpg" alt="夜色中的火龙巡街" class="pf-squircle pf-raised">
       <liquid-glass class="photo-chip" data-blur="3" data-dispersion="0.14">
         <span class="chip-label"><span class="dot"></span>玻璃横跨照片接缝</span>
       </liquid-glass>
@@ -296,7 +349,7 @@
     <div class="stage" id="stage">
       <div class="stage-text" id="stageText" aria-hidden="true"></div>
       <liquid-glass class="drag-glass" id="dragGlass" data-blur="3" data-thickness="0.62" data-bezel="0.26" data-dispersion="0.16">
-        <span class="drag-label">拖我</span>
+        <span class="drag-label"></span>
       </liquid-glass>
     </div>
   </section>
@@ -311,9 +364,9 @@
           <label class="ctl"><input type="checkbox" id="chkRefraction" checked> 物理折射</label>
           <label class="ctl"><input type="checkbox" id="chkAberration" checked> 色散（分谱 IOR）</label>
           <label class="ctl"><input type="checkbox" id="chkGlow" checked> 指针高光</label>
-          <label class="ctl">折射率 n <input type="range" id="rngIor" min="1.1" max="1.9" step="0.01" value="1.5"><output id="outIor">1.50</output></label>
-          <label class="ctl">色散宽度 <input type="range" id="rngDisp" min="0" max="0.5" step="0.02" value="0.18"><output id="outDisp">0.18</output></label>
-          <label class="ctl">物理倍率 <input type="range" id="rngStrength" min="0.2" max="2" step="0.05" value="1"><output id="outStrength">1.00</output></label>
+          <label class="ctl">折射率 n <span class="rng"><input type="range" id="rngIor" min="1.1" max="1.9" step="0.01" value="1.5"></span><output id="outIor">1.50</output></label>
+          <label class="ctl">色散宽度 <span class="rng"><input type="range" id="rngDisp" min="0" max="0.5" step="0.02" value="0.18"></span><output id="outDisp">0.18</output></label>
+          <label class="ctl">物理倍率 <span class="rng"><input type="range" id="rngStrength" min="0.2" max="2" step="0.05" value="1"></span><output id="outStrength">1.00</output></label>
         </div>
         <p class="panel-note">
           n=1.5 为冕牌玻璃，1.33≈水、1.77≈蓝宝石；倍率 1.0 即严格 Snell 解。
@@ -328,19 +381,18 @@
   <section class="band-how">
     <h2>原理速览 · 一块玻璃的六个层</h2>
     <div class="how-grid">
-      <div class="how-card"><h3>① 背景采样</h3><p><code>backdrop-filter</code> 拿到玻璃下方的真实像素，一切效果的原材料。</p></div>
-      <div class="how-card"><h3>② Snell 折射</h3><p>倒角几何 sinθ₁=1−d/r → <code>Δ=z·sinθ₁/√(n²−sin²₁)</code>，平坦中心零畸变，边缘把足迹外的背景拉入。</p></div>
-      <div class="how-card"><h3>③ 分谱色散</h3><p>n<sub>蓝</sub>＞n<sub>红</sub>，每通道独立解 Snell，红端图像位移最大，边缘呈外红内蓝的物理排序。</p></div>
-      <div class="how-card"><h3>④ 磨砂增艳</h3><p><code>blur() saturate() brightness()</code> 模拟光散射与环境色透入玻璃。</p></div>
-      <div class="how-card"><h3>⑤ 镜面高光</h3><p>锥形光谱环：crisp 描边 + 主/次 glint 随指针方位旋转，glint 两侧带暖→冷光谱微染。</p></div>
-      <div class="how-card"><h3>⑥ 液体反馈</h3><p>按压 <code>scale(.965)</code> spring 回弹；内容层独立于滤镜，文字永不扭曲。</p></div>
+      <div class="how-card pf-squircle pf-raised"><h3>① 背景采样</h3><p><code>backdrop-filter</code> 拿到玻璃下方的真实像素，一切效果的原材料。</p></div>
+      <div class="how-card pf-squircle pf-raised"><h3>② Snell 折射</h3><p>倒角几何 sinθ₁=1−d/r → <code>Δ=z·sinθ₁/√(n²−sin²₁)</code>，平坦中心零畸变，边缘把足迹外的背景拉入。</p></div>
+      <div class="how-card pf-squircle pf-raised"><h3>③ 分谱色散</h3><p>n<sub>蓝</sub>＞n<sub>红</sub>，每通道独立解 Snell，红端图像位移最大，边缘呈外红内蓝的物理排序。</p></div>
+      <div class="how-card pf-squircle pf-raised"><h3>④ 磨砂增艳</h3><p><code>blur() saturate() brightness()</code> 模拟光散射与环境色透入玻璃。</p></div>
+      <div class="how-card pf-squircle pf-raised"><h3>⑤ 镜面高光</h3><p>锥形光谱环：crisp 描边 + 主/次 glint 随指针方位旋转，glint 两侧带暖→冷光谱微染。</p></div>
+      <div class="how-card pf-squircle pf-raised"><h3>⑥ 液体反馈</h3><p>按压 <code>scale(.965)</code> spring 回弹；内容层独立于滤镜，文字永不扭曲。</p></div>
     </div>
   </section>
 
-  <footer>Lorem Ipsum · Liquid Glass 原理验证页 —— 独立实验，不影响主站 index.html</footer>
 </main>
 
-<div class="mode-badge" id="modeBadge">检测渲染模式中…</div>
+<div class="mode-badge pf-squircle pf-raised" id="modeBadge">检测渲染模式中…</div>
 
 <script src="./liquid-glass.js?v=8" defer></script>
 <script defer>
@@ -409,6 +461,36 @@
       }
     }, 200);
   });
+
+  /* 滑杆玻璃圆点：每根 range 叠一颗 <liquid-glass> 小球，实时跟随滑杆值；
+     pointer-events:none 使拖拽穿透到下方原生 input */
+  (function () {
+    var BALL = 20;
+    Array.prototype.forEach.call(document.querySelectorAll('.ctl .rng'), function (wrap) {
+      var input = wrap.querySelector('input[type="range"]');
+      var ball = document.createElement('liquid-glass');
+      ball.className = 'rng-ball';
+      ball.setAttribute('data-blur', '2');
+      ball.setAttribute('data-thickness', '0.7');
+      ball.setAttribute('data-bezel', '0.32');
+      ball.setAttribute('data-dispersion', '0.15');
+      ball.setAttribute('data-shadow', 'off');
+      ball.setAttribute('data-glow', 'off');
+      ball.setAttribute('data-press', 'off');
+      wrap.appendChild(ball);
+      function sync() {
+        var min = parseFloat(input.min), max = parseFloat(input.max), v = parseFloat(input.value);
+        var pct = max > min ? (v - min) / (max - min) : 0;
+        ball.style.left = (pct * (input.clientWidth - BALL)).toFixed(1) + 'px';
+        input.style.setProperty('--p', (pct * 100).toFixed(2) + '%');
+      }
+      input.addEventListener('input', sync);
+      input.addEventListener('change', sync);
+      window.addEventListener('resize', sync);
+      window.addEventListener('load', sync);
+      setTimeout(sync, 300);
+    });
+  })();
 
   /* 拖拽玻璃圆钮：用 CSS translate 属性移动，避免与按压缩放的 transform 冲突 */
   (function () {
