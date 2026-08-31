@@ -9,18 +9,18 @@ LiquidGlass.js — 零依赖、单文件的 iOS 26「液态玻璃」Web 组件�
 ## 常用命令
 
 ```powershell
-# 本地预览 demo（项目根目录启动静态服务器，然后访问 http://localhost:8000/demo.html）
+# 本地预览 index.html（项目根目录启动静态服务器，然后访问 http://localhost:8000/）
 python -m http.server 8000
 ```
 
 无 build / lint / test 流程。验证方式：
-- 打开 `demo.html`（跑马灯 / 照片接缝 / 可拖拽玻璃 / 折射率滑杆实时热切换）；
+- 打开 `index.html`（跑马灯 / 照片接缝 / 可拖拽玻璃 / 折射率滑杆实时热切换）；
 - 控制台检查 `window.LiquidGlass.version`（当前 2.3）、`LiquidGlass.CAN_REFRACT`、`LiquidGlass.all.map(i => i.mode)` —— 出现 `'basic'` 说明降级（浏览器不支持或踩了静默坑，见下）。
 
 ## 架构
 
 - `liquid-glass.js` — 组件本体（IIFE，零依赖）。关键流程：能力检测（`CAN_REFRACT`，UA + `CSS.supports`）→ `sdRoundedRect`（SDF）逐像素解 Snell 生成每通道位移贴图（R/G/B 各自独立解算，B 通道编码 Schlick Fresnel 透射率）→ 动态构建 SVG `feDisplacementMap` 滤镜挂到全站共享的隐藏 `<svg id="liquid-glass-defs">` 池 → 写入 `.lg-surface` 的 `backdrop-filter`。DOM 分层：`.lg-surface`（折射/磨砂）→ `.lg-tint` → `.lg-rim`（锥形光谱环，glint 随指针方位旋转）→ `.lg-highlight`（指针光斑）→ `.lg-content`（内容不参与折射，文字永不扭曲）。支持自定义元素 `<liquid-glass data-*>` 与 JS API `new LiquidGlass(el, opts)` 双用法。
-- `demo.html` — 独立验证页；script 标签必须带 `?v=N` 版本参数防缓存。
+- `index.html` — 独立验证页（原 demo.html）；script 标签必须带 `?v=N` 版本参数防缓存。
 - `skills/liquid-glass/` — 可分发的 Skill 打包（`assets/` 内是组件与 demo 的**捆绑副本**，根目录文件为主源码；`references/pitfalls.md` 是 Chromium 静默失效坑清单 + 调试方法论）。**修改根目录组件后需同步 `skills/liquid-glass/assets/liquid-glass.js`**。
 
 ## 关键约束（Chromium 静默杀手，违反任意一条位移直接消失且无警告）

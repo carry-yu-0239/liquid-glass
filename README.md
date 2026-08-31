@@ -102,5 +102,5 @@ host
 ## 文件
 
 - `liquid-glass.js` 组件(约 350 行,含物理推导注释)
-- `demo.html` 独立验证页:跑马灯 / 照片接缝 / 可拖拽玻璃 / 折射率滑杆(1.10–1.90)实时热切换,
-  访问 `http://localhost:8000/liquid-glass/demo.html`(项目根 `python -m http.server 8000`)
+- `index.html` 独立验证页:跑马灯 / 照片接缝 / 可拖拽玻璃 / 折射率滑杆(1.10–1.90)实时热切换,
+  访问 `http://localhost:8000/index.html`(项目根 `python -m http.server 8000`)
