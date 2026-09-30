@@ -15,7 +15,7 @@ python -m http.server 8000
 
 无 build / lint / test 流程。验证方式：
 - 打开 `index.html`（跑马灯 / 照片接缝 / 可拖拽玻璃 / 折射率滑杆实时热切换）；
-- 控制台检查 `window.LiquidGlass.version`（当前 2.3）、`LiquidGlass.CAN_REFRACT`、`LiquidGlass.all.map(i => i.mode)` —— 出现 `'basic'` 说明降级（浏览器不支持或踩了静默坑，见下）。
+- 控制台检查 `window.LiquidGlass.version`（当前 2.4）、`LiquidGlass.CAN_REFRACT`、`LiquidGlass.all.map(i => i.mode)` —— 出现 `'basic'` 说明降级（浏览器不支持或踩了静默坑，见下）。
 
 ## 架构
 
@@ -28,6 +28,6 @@ python -m http.server 8000
 1. 玻璃宿主内任何兄弟层禁用 `mix-blend-mode`（含 plus-lighter）——会迫使宿主成为合成层，`backdrop-filter` 位移被静默丢弃。
 2. 宿主禁止 `border-radius: 999px` 药丸写法（组件已把各层半径钳制到 `min(w,h)/2` 规避，不要覆盖层圆角）。
 3. 玻璃祖先链保持干净：祖先带 `filter` / `opacity<1` / `mask` / `isolation:isolate`（或其 will-change）会形成 backdrop root 截断采样。
-4. 滤镜 SVG 池不能 `display:none`（会失效）；组件内部已有 rAF + setTimeout 兜底通道应对「无合成帧时 rAF 冻结」。
+4. 滤镜 SVG 池不能 `display:none`（会失效）；组件内部已有 rAF + setTimeout 兜底通道应对「无合成帧时 rAF 冻结」。\n5. v2.4 默认启用 `viewportGuard`：折射采样不得越过 `visualViewport`，同时 SVG filter region 必须按实际最大位移动态扩张；这是小尺寸尖刺与 Android browser-controls 串色的回归保护。
 
 调试失效时先读 `skills/liquid-glass/references/pitfalls.md` 的调试方法论（开关往返 + 强制出帧取证、逐点断言位移贴图与 Snell 解析解）。
