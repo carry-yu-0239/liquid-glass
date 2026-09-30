@@ -37,14 +37,14 @@ LiquidGlass.setAll({ dispersion: 0 }); // 全部实例
 4. **分谱色散** n(蓝) > n(绿) > n(红) → tanθ₂ 随 n 减小 → **红端图像位移最大、蓝端最小**,
    边缘分带由外向内呈 红→绿→蓝 的物理正确排序。v2.3 起**每通道一张独立贴图、各自精确解
    Snell**(不再用绿通道 × 缩放比的小角度近似),倒角高倾斜区色散更宽更准
-5. **Fresnel** Schlick 近似透射率 `T(θ)` 编码进位移贴图 B 通道(墙面处 T→0,近乎全反射)
+5. **Fresnel** Schlick 近似透射率 `T(θ)` 编码进位移贴图 B 通道,并参与最终合成：透射与白色环境反射按 `T / (1-T)` 近似能量分配
 6. **锥形光谱环(v2.3)**:rim 层为 conic-gradient 描边环——主 glint(75°)+ 对侧次亮弧,
    glint 两侧带暖→冷的光谱微染,且随指针方位旋转(`--lg-rim-rot`,@property 注册可过渡),
    模拟光随视角打在倒角上
 
 > 说明:①本模型光线自顶面入射、底面出射,θ₂ ≤ 临界角,不发生 TIR(TIR 只出现在「底进侧出」);
 > ②`feDisplacementMap` 只能弯折采样、无法聚光,故没有真实焦散——W3C svgwg#1142 承认的平台限制;
-> ③feDisplacementMap 无法逐通道更换 IOR,红/蓝通道取墙面工况的位移比缩放,小角度区间解析精确。
+> ③v2.3 起 R/G/B 每通道都独立解 Snell,不再用墙面缩放近似；v2.4 进一步按倒角带真实最大位移归一化,避免 H≈r 时的饱和失真。
 
 ## 参数
 
@@ -55,6 +55,8 @@ LiquidGlass.setAll({ dispersion: 0 }); // 全部实例
 | `bezel` | `min(w,h)×0.34` | 倒角半径 r px(≤1 小数 = 比例);物理约束 r ≤ H |
 | `dispersion` | 0.08 | 分谱折射率宽 n(蓝)−n(红);物理冕玻璃 ≈0.007,视觉可夸大 |
 | `refraction` | 1 | 物理倍率:**1 = 严格 Snell 解**,≠1 为艺术夸张 |
+| `fresnel` | 0.28 | Schlick 边缘反射强度(0~1);0=关闭 |
+| `viewportGuard` | true | 把折射采样限制在 visual viewport 内,避免移动端越界采到浏览器 controls |
 | `blur` / `saturation` / `brightness` | 10 / 1.6 / 1.05 | 磨砂与增艳 |
 | `tint` | `rgba(255,255,255,.08)` | 着色层 |
 | `radius` | 读 CSS `border-radius` | 圆角(折射场按它生成 SDF) |
@@ -89,6 +91,8 @@ host
 - **超大 border-radius 同样静默丢弃位移**:`border-radius: 999px` 这类药丸写法会让
   backdrop 位移失效(12px/40px/半高值均正常)。组件已把各层半径显式钳制到
   `min(w,h)/2`(视觉不变),宿主写 999px 也没关系;
+- **小尺寸尖角/星芒**:v2.4 起改用圆角矩形解析法线,并按真实最大折射位移动态扩展 SVG filter region；旧版固定 `-25% / 150%` 在 20~40px 小按钮上可能严重裁切位移场,形成尖角、星芒或边界翻卷；
+- **移动端浏览器 UI 串色**:部分 Android Chromium/WebView 会在 viewport 边缘把越界 backdrop 位移采到 browser-controls compositor texture。v2.4 默认 `viewportGuard:true`,逐像素把采样目标钳制在 `visualViewport` 内,同时收紧靠近 viewport 边缘的 filter region；
 - **rAF 在无合成帧时不执行**:页面刚加载、静止无动画时,排队在 rAF 上的重建不会运行。
   组件已加 setTimeout 兜底通道 + 有界重试 + `_lastError` 记录,并暴露
   `LiquidGlass.CAN_REFRACT` / `LiquidGlass.version`;
