@@ -1,8 +1,11 @@
 /*!
- * LiquidGlass.js v2.3 — 物理折射版「液态玻璃」材质组件(vanilla / 零依赖 / 单文件)
+ * LiquidGlass.js v2.4 — 物理折射版「液态玻璃」材质组件(vanilla / 零依赖 / 单文件)
  * =========================================================================
- * v2.3:①边缘高光升级为锥形光谱环(crisp 描边 + 主/次 glint + 光谱微染 + 指针联动旋转);
- *      ②色散升级为每通道独立解 Snell 的三张贴图(v2.2 为绿通道贴图 × 缩放比的小角度近似)
+ * v2.4:①动态滤镜边界 + visual viewport 采样护栏,阻止小控件裁切尖刺与移动端浏览器 UI 串色;
+ *      ②圆角矩形改用解析法线,小尺寸控件不再受 1px 数值梯度量化干扰;
+ *      ③位移归一化改为扫描倒角真实最大位移,移除墙面 ×1.15 的饱和近似;
+ *      ④Schlick Fresnel 正式接入渲染链(白色环境反射近似,强度可调).
+ * v2.3:边缘高光升级为锥形光谱环;色散升级为每通道独立解 Snell 的三张贴图
  * v2 与 v1 的区别:位移场不再是「法线 × 任意衰减曲线」的美术近似,而是按
  * **Snell 折射定律解析计算**,视觉完全由物理参数(折射率 / 厚度 / 倒角半径)决定。
  *
@@ -18,7 +21,7 @@
  *                  n 增大反而收敛(∂Δ/∂n < 0)
  *   ④ 色散       柯西色散:n蓝 > n绿 > n红 → tanθ₂ 随 n 减小 → **红端图像位移最大、蓝端最小**,
  *                边缘分带由外向内呈 红→绿→蓝 的物理正确排序(v1 的任意倍率已废弃)
- *   ⑤ Fresnel    Schlick 近似透射率 T(θ) 编码进位移贴图 B 通道(供扩展使用)
+ *   ⑤ Fresnel    Schlick 近似透射率 T(θ) 编码进位移贴图 B 通道,并驱动边缘环境反射近似
  *   注:本模型光线自顶面入射、底面出射,θ₂ ≤ 临界角,不会发生全反射(TIR 只出现在
  *       「底进侧出」路径);feDisplacementMap 只能弯折采样、无法聚光,故没有真实焦散,
  *       这是 W3C svgwg#1142 承认的平台级限制。
@@ -128,12 +131,68 @@
     return s2 / Math.sqrt(1 - s2 * s2); // = sinθ₁ / √(n² − sin²θ₁)
   }
 
+  function clamp(v, lo, hi) {
+    return Math.max(lo, Math.min(hi, v));
+  }
+
+  // 圆角矩形 SDF 的解析外法线。v2.3 用 ±1px 数值梯度,在 20~40px 小控件上会量化出尖角/星芒。
+  function roundedRectNormal(px, py, w, h, r) {
+    var hw = w / 2, hh = h / 2;
+    var cx = px - hw, cy = py - hh;
+    var sx = cx < 0 ? -1 : 1, sy = cy < 0 ? -1 : 1;
+    var qx = Math.abs(cx) - (hw - r);
+    var qy = Math.abs(cy) - (hh - r);
+
+    if (qx > 0 && qy > 0) {
+      var len = Math.hypot(qx, qy) || 1;
+      return [sx * qx / len, sy * qy / len];
+    }
+    if (qx > qy) return [sx, 0];
+    if (qy > qx) return [0, sy];
+
+    var inv = Math.SQRT1_2;
+    return [sx * inv, sy * inv];
+  }
+
+  // 求倒角带上的真实最大位移。不能假定最大值一定在墙面 d→0:
+  // H≈r 时墙面位移很小,但倒角内部仍可能出现更大的偏移。
+  function maxRefractedOffset(H, r, n, k) {
+    var steps = Math.max(64, Math.min(256, Math.ceil(r * 4)));
+    var maxOff = 0;
+    for (var i = 0; i <= steps; i++) {
+      var sinT = 1 - i / steps;
+      var z = (H - r) + r * Math.sqrt(Math.max(1 - sinT * sinT, 0));
+      maxOff = Math.max(maxOff, z * tanRefracted(sinT, n) * k);
+    }
+    return Math.max(maxOff * 1.02, 0.001);
+  }
+
+  // backdrop-filter 在 Android Chromium/Viz 中可能在 viewport 边缘越界采到 browser controls texture。
+  // 把每个输出像素的采样目标限制在 visual viewport 内,避免网页顶部玻璃“折射”地址栏/工具栏。
+  function getViewportSampleBounds(rect) {
+    var vv = window.visualViewport;
+    var left = vv ? (vv.offsetLeft || 0) : 0;
+    var top = vv ? (vv.offsetTop || 0) : 0;
+    var width = vv ? vv.width : (window.innerWidth || document.documentElement.clientWidth || 0);
+    var height = vv ? vv.height : (window.innerHeight || document.documentElement.clientHeight || 0);
+    return {
+      left: left,
+      top: top,
+      right: left + width,
+      bottom: top + height,
+      minX: left - rect.left + 0.5,
+      maxX: left + width - rect.left - 0.5,
+      minY: top - rect.top + 0.5,
+      maxY: top + height - rect.top - 0.5
+    };
+  }
+
   /**
    * 生成物理折射位移贴图(单次遍历,按分谱折射率输出 1~3 张 canvas):
    *   每个波长通道独立解 Snell:Δ_c(d) = z(d)·sinθ₁/√(n_c²−sin²₁)
    *   (v2.2 的「单贴图 × 通道缩放比」只是小角度近似;v2.3 逐通道精确,倒角高倾斜区色散更宽更准)
    *   R/G = 归一化偏移向量,B = Fresnel 透射率(Schlick);平坦区恒为中性(物理零畸变)
-   * 返回 [{canvas, url, w, h, M}],M 为该通道墙面位移 ×1.15 余量(倒角带折叠区允许饱和)
+   * 返回 [{canvas, url, w, h, M}],M 为该通道倒角带的真实最大位移(含 2% 数值余量)
    */
   function buildRefractionMaps(w, h, radius, p) {
     var dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -147,11 +206,11 @@
       canvases.push(cv);
       ctxs.push(cv.getContext('2d'));
       imgs.push(ctxs[c].createImageData(cw, ch));
-      // 墙面(d→0, sinθ₁=1)处的物理位移 ×1.15 余量,作为归一化基准
-      maxOff.push(Math.max((p.thickness - p.bezel) * tanRefracted(1, ns[c]) * p.k * 1.15, 0.001));
+      maxOff.push(maxRefractedOffset(p.thickness, p.bezel, ns[c], p.k));
     }
     var H = p.thickness, r = p.bezel, k = p.k;
-    var r0 = Math.pow((ns[1] - 1) / (ns[1] + 1), 2); // Schlick R0(绿基准)
+    var nBase = ns.length > 1 ? ns[1] : ns[0];
+    var r0 = Math.pow((nBase - 1) / (nBase + 1), 2); // Schlick R0(绿基准;无色散时用唯一 IOR)
     var i = 0;
     for (var py = 0; py < ch; py++) {
       var y = (py + 0.5) / dpr;
@@ -160,11 +219,8 @@
         var d = sdRoundedRect(x, y, w, h, radius);
         if (d < 0) {
           var depth = -d;
-          // 数值梯度 → 外法线(采样方向的骨架)
-          var nx = sdRoundedRect(x + 1, y, w, h, radius) - sdRoundedRect(x - 1, y, w, h, radius);
-          var ny = sdRoundedRect(x, y + 1, w, h, radius) - sdRoundedRect(x, y - 1, w, h, radius);
-          var len = Math.hypot(nx, ny) || 1;
-          nx /= len; ny /= len;
+          var normal = roundedRectNormal(x, y, w, h, radius);
+          var nx = normal[0], ny = normal[1];
           var sinT, z;
           if (depth < r) {
             sinT = 1 - depth / r;                                      // 倒角圆弧的表面倾角
@@ -175,10 +231,17 @@
           var cosT = Math.sqrt(Math.max(1 - sinT * sinT, 0));
           var trans = Math.round((1 - (r0 + (1 - r0) * Math.pow(1 - cosT, 5))) * 255);
           for (var j = 0; j < nc; j++) {
-            var e = z * tanRefracted(sinT, ns[j]) * k / maxOff[j];
+            var off = z * tanRefracted(sinT, ns[j]) * k;
+            var dx = nx * off, dy = ny * off;
+
+            if (p.sampleBounds) {
+              dx = clamp(x + dx, p.sampleBounds.minX, p.sampleBounds.maxX) - x;
+              dy = clamp(y + dy, p.sampleBounds.minY, p.sampleBounds.maxY) - y;
+            }
+
             var data = imgs[j].data;
-            data[i]     = Math.round(128 + Math.max(-1.15, Math.min(1.15, nx * e)) * 127);
-            data[i + 1] = Math.round(128 + Math.min(1.15, Math.max(-1.15, ny * e)) * 127);
+            data[i]     = Math.round(128 + clamp(dx / maxOff[j], -1, 1) * 127);
+            data[i + 1] = Math.round(128 + clamp(dy / maxOff[j], -1, 1) * 127);
             data[i + 2] = trans;
             data[i + 3] = 255;
           }
@@ -201,8 +264,9 @@
   /* ---------- 3. SVG 滤镜:物理位移 + 分谱色散 ---------- */
   // v2.3:开色散时每通道一张独立贴图(各自精确解 Snell,不再用墙面缩放比近似);
   // 关色散时退化为单张贴图 + 单次位移,省 2/3 贴图内存与填充率。
-  function buildFilterPrimitives(maps, hasDispersion) {
+  function buildFilterPrimitives(maps, hasDispersion, fresnelStrength) {
     var g = maps.length > 1 ? maps[1] : maps[0];
+
     function feImage(m, res) {
       return '<feImage href="' + m.url + '" x="0" y="0" width="' + m.w + '" height="' + m.h + '" preserveAspectRatio="none" result="' + res + '"/>';
     }
@@ -210,11 +274,32 @@
       return '<feDisplacementMap in="SourceGraphic" in2="' + mapRes + '" scale="' + (2 * M).toFixed(2) +
              '" xChannelSelector="R" yChannelSelector="G" result="' + outRes + '"/>';
     }
-    if (!hasDispersion) {
-      return feImage(g, 'map') + disp('map', 'd', g.M);
+    function fresnel(baseRes, mapRes) {
+      var strength = clamp(fresnelStrength || 0, 0, 1);
+      if (strength <= 0) return '';
+
+      // B 通道存的是 Schlick 透射率 T。按强度 s 做近似能量分配:
+      // transmitted = 1 - s(1-T), reflected = s(1-T),两者相加恒为 1。
+      var s = strength.toFixed(4);
+      var oneMinus = (1 - strength).toFixed(4);
+      return '<feColorMatrix in="' + mapRes + '" type="matrix" ' +
+        'values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 ' + s + ' 0 ' + oneMinus + '" result="transmitMask"/>' +
+        '<feComposite in="' + baseRes + '" in2="transmitMask" operator="in" result="fresnelTransmit"/>' +
+        '<feColorMatrix in="' + mapRes + '" type="matrix" ' +
+        'values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 -' + s + ' 0 ' + s + '" result="reflectMask"/>' +
+        '<feFlood flood-color="#fff" result="reflectFlood"/>' +
+        '<feComposite in="reflectFlood" in2="reflectMask" operator="in" result="fresnelReflect"/>' +
+        '<feMerge><feMergeNode in="fresnelTransmit"/><feMergeNode in="fresnelReflect"/></feMerge>';
     }
-    // 物理排序:红端(IOR 最低)位移最大、蓝端最小 → 边缘分带外红外蓝
-    return feImage(maps[0], 'mapR') + feImage(maps[1], 'mapG') + feImage(maps[2], 'mapB') +
+
+    if (!hasDispersion) {
+      var mono = feImage(g, 'map') + disp('map', 'refracted', g.M);
+      return mono + fresnel('refracted', 'map');
+    }
+
+    // 物理排序:红端(IOR 最低)位移最大、蓝端最小 → 边缘分带外红内蓝
+    var chromatic =
+      feImage(maps[0], 'mapR') + feImage(maps[1], 'mapG') + feImage(maps[2], 'mapB') +
       disp('mapR', 'dR', maps[0].M) +
       disp('mapG', 'dG', maps[1].M) +
       disp('mapB', 'dB', maps[2].M) +
@@ -222,7 +307,8 @@
       '<feColorMatrix in="dG" type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 0 0 0  0 0 0 1 0" result="cG"/>' +
       '<feColorMatrix in="dB" type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 1 0 0  0 0 0 1 0" result="cB"/>' +
       '<feComposite in="cR" in2="cG" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="cRG"/>' +
-      '<feComposite in="cRG" in2="cB" operator="arithmetic" k1="0" k2="1" k3="1" k4="0"/>';
+      '<feComposite in="cRG" in2="cB" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="refracted"/>';
+    return chromatic + fresnel('refracted', 'mapG');
   }
 
   // 全站共享一个隐藏 <svg> 滤镜池(不能用 display:none,滤镜会失效)
@@ -322,6 +408,8 @@
     bezel: null,         // 倒角半径 r px;传 ≤1 小数按 min(w,h) 比例;默认 ×0.34
     dispersion: 0.08,    // 分谱折射率宽 n蓝−n红(物理冕玻璃 ≈0.007,视觉可夸大)
     refraction: 1,       // 物理倍率:1 = 严格 Snell 解,≠1 为艺术夸张
+    fresnel: 0.28,       // Schlick 反射强度(0~1);白色环境反射近似,0 = 关闭
+    viewportGuard: true, // 限制位移采样不越过 visual viewport,避免 Android browser-controls 串色
     radius: null,        // 圆角 px;默认读 CSS border-radius
     shadow: true,
     pointerGlow: true,
@@ -430,18 +518,40 @@
       var iors = dn > 0.001
         ? [Math.max(nG - dn / 2, 1.05), nG, nG + dn / 2]  // R,G,B 分谱折射率(柯西色散)
         : [nG];
-      var maps = buildRefractionMaps(w, h, radius, { thickness: H, bezel: r, iors: iors, k: o.refraction });
+      var viewport = getViewportSampleBounds(rect);
+      var sampleBounds = o.viewportGuard === false ? null : viewport;
+      var maps = buildRefractionMaps(w, h, radius, {
+        thickness: H, bezel: r, iors: iors, k: o.refraction, sampleBounds: sampleBounds
+      });
+
+      var maxM = 0;
+      for (var mi = 0; mi < maps.length; mi++) maxM = Math.max(maxM, maps[mi].M);
+      var filterPad = Math.ceil(maxM + Math.max(o.blur, 0) * 2 + 2);
+      var padLeft = filterPad, padTop = filterPad, padRight = filterPad, padBottom = filterPad;
+      if (o.viewportGuard !== false) {
+        padLeft = Math.min(filterPad, Math.max(0, rect.left - viewport.left));
+        padTop = Math.min(filterPad, Math.max(0, rect.top - viewport.top));
+        padRight = Math.min(filterPad, Math.max(0, viewport.right - rect.right));
+        padBottom = Math.min(filterPad, Math.max(0, viewport.bottom - rect.bottom));
+      }
+
       var defs = ensureDefsBucket();
       var filter = document.createElementNS(SVG_NS, 'filter');
       filter.id = this.id;
-      filter.setAttribute('x', '-25%');
-      filter.setAttribute('y', '-25%');
-      filter.setAttribute('width', '150%');
-      filter.setAttribute('height', '150%');
+      filter.setAttribute('x', (-(padLeft / w) * 100).toFixed(3) + '%');
+      filter.setAttribute('y', (-(padTop / h) * 100).toFixed(3) + '%');
+      filter.setAttribute('width', (100 + ((padLeft + padRight) / w) * 100).toFixed(3) + '%');
+      filter.setAttribute('height', (100 + ((padTop + padBottom) / h) * 100).toFixed(3) + '%');
       filter.setAttribute('color-interpolation-filters', 'sRGB');
-      filter.innerHTML = buildFilterPrimitives(maps, iors.length === 3);
+      filter.innerHTML = buildFilterPrimitives(maps, iors.length === 3, o.fresnel);
       defs.appendChild(filter);
       this.filterEl = filter;
+      this._debug = {
+        width: w, height: h, radius: radius, thickness: H, bezel: r,
+        maxDisplacement: maxM, filterPad: filterPad,
+        viewportGuard: o.viewportGuard !== false,
+        filterInsets: { left: padLeft, top: padTop, right: padRight, bottom: padBottom }
+      };
       this.mode = 'refraction';
       host.classList.remove('lg--basic');
       bf = 'url(#' + this.id + ') blur(' + o.blur + 'px) saturate(' + o.saturation + ') brightness(' + o.brightness + ')';
@@ -492,6 +602,8 @@
         thickness: numAttr(this.dataset.thickness),
         bezel: numAttr(this.dataset.bezel),
         dispersion: numAttr(this.dataset.dispersion),
+        fresnel: numAttr(this.dataset.fresnel),
+        viewportGuard: this.dataset.viewportGuard !== 'off',
         radius: numAttr(this.dataset.radius),
         tint: this.dataset.tint || undefined,
         shadow: this.dataset.shadow !== 'off',
@@ -507,6 +619,6 @@
   }
 
   window.LiquidGlass = LiquidGlass;
-  LiquidGlass.version = '2.3';
+  LiquidGlass.version = '2.4';
   LiquidGlass.CAN_REFRACT = CAN_REFRACT; // 暴露给徽章/调试:当前浏览器是否支持 backdrop SVG 滤镜
 })();

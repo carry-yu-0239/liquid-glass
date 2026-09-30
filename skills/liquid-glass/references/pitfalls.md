@@ -1,6 +1,6 @@
 # Liquid Glass 坑手册与物理推导
 
-## 一、物理模型(v2.3,俯视 UI 玻璃)
+## 一、物理模型(v2.4,俯视 UI 玻璃)
 
 玻璃 = 平板(厚 H)+ 边缘圆角倒角(fillet 半径 r),视线垂直向下。
 
@@ -15,8 +15,7 @@
 4. **分谱色散**:n(蓝) > n(绿) > n(红) → tanθ₂ 随 n 减小 → **红端图像位移最大、蓝端最小**,
    倒角带由外向内呈红→绿→蓝排序。每通道一张独立贴图各自精确解算(v2.3 前「绿贴图×墙面缩放比」
    只是 paraxial 近似,大角度误差可达 5%)。
-5. **Fresnel**:Schlick 近似 `R(θ) = R₀ + (1−R₀)(1−cosθ)⁵`,透射率 T=1−R 编码进贴图 B 通道
-   (墙面 T→0 近乎全反射;cos⁵ 特性使其只在贴墙 1–2px 内骤降,这是正确物理,勿当作 bug)。
+5. **Fresnel**:Schlick 近似 `R(θ) = R₀ + (1−R₀)(1−cosθ)⁵`,透射率 T=1−R 编码进贴图 B 通道。v2.4 起最终滤镜按 `transmitted = 1-s(1-T)`、`reflected = s(1-T)` 做近似能量守恒合成(`s=fresnel`)；反射环境以白色近似。
 6. **平台限制**:`feDisplacementMap` 只弯折采样、不聚光 → 无真实焦散(W3C svgwg#1142);
    本模型顶入底出,θ₂ ≤ 临界角,不发生 TIR(TIR 只在「底进侧出」路径)。
 
@@ -24,8 +23,7 @@
 
 - DOM 分层(内容层独立于滤镜,文字永不扭曲):
   `host > .lg-surface(backdrop-filter: url(#滤镜) blur() saturate()) + .lg-tint + .lg-rim + .lg-highlight + .lg-content`
-- 位移贴图:canvas 逐像素解算 → PNG dataURL → `feImage` → `feDisplacementMap`。
-  编码:`R/G = 128 + 归一化偏移×127`(归一化基准 = 墙面位移 ×1.15 余量,折叠区饱和无害);
+- 位移贴图:canvas 逐像素解算 → PNG dataURL → `feImage` → `feDisplacementMap`。\n  v2.4 改用圆角矩形**解析法线**(不再用 ±1px 数值梯度),小尺寸控件角部不会因像素量化长出星芒。\n  编码:`R/G = 128 + 归一化偏移×127`(归一化基准 = 扫描整个倒角带得到的真实最大位移 +2% 数值余量);
   `feDisplacementMap` 偏移 = `scale × (通道值 − 0.5)` → `scale = 2 × M`。
 - 滤镜链:开色散 = 3×(feImage+feDisplacementMap)+ 3×feColorMatrix 取通道 + 2×feComposite 算术叠加;
   关色散退化为单贴图单位移。
@@ -40,7 +38,7 @@
 | 2 | 宿主/层 `border-radius: 999px` 药丸 | 同滤镜克隆:12px/40px 狂野折射,999px 全平 | 各层半径显式钳制到 min(w,h)/2(视觉不变) |
 | 3 | 祖先带 filter / opacity<1 / mask / isolation:isolate(或 will-change) | 形成 backdrop root 截断采样 | 祖先链保持干净 |
 | 4 | 脚本缓存旧版 | 旧 JS 无新参数 → 参数全部静默无效 | script 标签带 ?v=N;徽章显示 LiquidGlass.version |
-| 5 | 页面无合成帧时 rAF 不出队 | 排队在 rAF 上的重建全部滞留,实例卡 basic | 调度加 setTimeout 通道 + 有界重试 + `_lastError` 记录 |
+| 5 | 页面无合成帧时 rAF 不出队 | 排队在 rAF 上的重建全部滞留,实例卡 basic | 调度加 setTimeout 通道 + 有界重试 + `_lastError` 记录 |\n| 6 | 固定 `filter x=-25%, width=150%` + 小控件大位移 | 位移目标超出 SVG filter region,常见四角尖刺/星芒/边界翻卷 | v2.4 按真实最大位移动态计算四侧 filter region |\n| 7 | Android Chromium/WebView 顶部/底部 browser controls | backdrop 越界位移可能串采浏览器 UI 的 compositor texture | v2.4 默认 `viewportGuard:true`,逐像素 clamp 到 `visualViewport` 且 filter region 不越界 |
 
 ## 四、调试方法论(本环境实测有效)
 
@@ -50,9 +48,9 @@
 2. **开关往返 + 强制出帧**:`setOptions({refraction:0/1})` 各截一帧;截图前翻转一次 body
    内联样式强制合成器出帧。本环境静置读数可能撞上 rAF 冻结(mode 延迟自愈)、裁剪截图
    坐标系偏移——**视觉结论必须全屏目检 + DOM 数值断言双确认**。
-3. 失效排查顺序:mode 是否 refraction → `_lastError` → backdrop-filter 内联值 → 滤镜池
+3. 几何/边界排查:检查 `instance._debug` 的 `maxDisplacement`、`filterPad`、`filterInsets` 与 `viewportGuard`;小控件不应再出现 `maxDisplacement > filterInsets` 的内部裁切。\n4. 失效排查顺序:mode 是否 refraction → `_lastError` → backdrop-filter 内联值 → 滤镜池
    filter 是否存在 → 逐项对上表 1–3。
-4. `||` 短路表达式里做 DOM 副作用必踩坑(曾让 bisect 的 `highlight.remove()` 从未执行,
+5. `||` 短路表达式里做 DOM 副作用必踩坑(曾让 bisect 的 `highlight.remove()` 从未执行,
    拖偏整个排查方向)——副作用单独写语句。
 
 ## 五、浏览器支持

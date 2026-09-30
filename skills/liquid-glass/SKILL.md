@@ -14,7 +14,7 @@ description: 在任意 Web 前端项目中集成 iOS 26 风格「液态玻璃」
 
 | 文件 | 用途 |
 | --- | --- |
-| [assets/liquid-glass.js](assets/liquid-glass.js) | 组件本体 v2.3(含物理推导注释),**原样复制**到目标项目 |
+| [assets/liquid-glass.js](assets/liquid-glass.js) | 组件本体 v2.4(含物理推导注释),**原样复制**到目标项目 |
 | [assets/demo.html](assets/demo.html) | 完整演示页:跑马灯/照片接缝/可拖拽玻璃/参数控制台(图片引用原项目 images/,单独拷出时显示 alt 占位) |
 | [references/pitfalls.md](references/pitfalls.md) | Chromium 静默失效坑清单(附实测证据)、物理模型推导、参数详解、调试方法论 |
 
@@ -36,7 +36,7 @@ description: 在任意 Web 前端项目中集成 iOS 26 风格「液态玻璃」
    const lg = new LiquidGlass(el, { ior: 1.5, thickness: 0.6 });
    lg.setOptions({ ior: 1.9, dispersion: 0.3 });
    ```
-3. 验证:`window.LiquidGlass.version`(当前 2.3)、`LiquidGlass.CAN_REFRACT`、
+3. 验证:`window.LiquidGlass.version`(当前 2.4)、`LiquidGlass.CAN_REFRACT`、
    `LiquidGlass.all.map(i => i.mode)` 全为 `'refraction'`——出现 `'basic'` 说明踩了下面的坑或浏览器不支持。
 
 ## 核心参数(≤1 的小数 = min(w,h) 比例;>1 = px)
@@ -47,6 +47,8 @@ description: 在任意 Web 前端项目中集成 iOS 26 风格「液态玻璃」
 | `thickness` / `bezel` | ×0.7 / ×0.34 | 玻璃厚度 / 倒角半径;直壁段 (H−r) 决定边缘位移强度 |
 | `dispersion` | 0.08 | 分谱折射率宽 n(蓝)−n(红);物理冕玻璃 ≈0.007,视觉可夸大 |
 | `refraction` | 1 | 1 = 严格 Snell 解;≠1 为艺术夸张 |
+| `fresnel` | 0.28 | Schlick 边缘反射强度(0~1) |
+| `viewportGuard` | true | 限制采样在 visual viewport 内,防 Android browser-controls 串色 |
 | `blur` / `saturation` / `brightness` | 10 / 1.6 / 1.05 | 磨砂与增艳 |
 | `shadow` / `pointerGlow` / `press` | true | 阴影 / 指针高光+glint 旋转 / 按压缩放 |
 
@@ -58,7 +60,7 @@ description: 在任意 Web 前端项目中集成 iOS 26 风格「液态玻璃」
    组件已把各层半径显式钳制到 min(w,h)/2 规避,不要覆盖层圆角。
 3. **祖先带 `filter` / `opacity<1` / `mask` / `isolation:isolate`**(或其 will-change)——
    形成 backdrop root 截断采样。保持玻璃祖先链干净。
-4. **脚本缓存**——改版后浏览器可能仍跑旧 JS(表现:所有参数静默无效)。script 标签永远带
+4. **小尺寸/viewport 边界**——旧版固定 SVG filter region 会在小按钮上裁切大位移并产生尖角;Android Chromium 还可能在页面顶部把越界 backdrop 采样串到浏览器 controls。v2.4 已改为动态 filter region + `visualViewport` 采样护栏。\n5. **脚本缓存**——改版后浏览器可能仍跑旧 JS(表现:所有参数静默无效)。script 标签永远带
    `?v=N`;页面徽章显示 `LiquidGlass.version` 可直接识别。
 
 排查失效时先读 [references/pitfalls.md](references/pitfalls.md) 的「调试方法论」:
