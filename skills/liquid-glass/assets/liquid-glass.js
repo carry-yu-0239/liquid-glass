@@ -277,11 +277,19 @@
     function fresnel(baseRes, mapRes) {
       var strength = clamp(fresnelStrength || 0, 0, 1);
       if (strength <= 0) return '';
+
+      // B 通道存的是 Schlick 透射率 T。按强度 s 做近似能量分配:
+      // transmitted = 1 - s(1-T), reflected = s(1-T),两者相加恒为 1。
+      var s = strength.toFixed(4);
+      var oneMinus = (1 - strength).toFixed(4);
       return '<feColorMatrix in="' + mapRes + '" type="matrix" ' +
-        'values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 -1 0 1" result="reflectMask"/>' +
-        '<feFlood flood-color="#fff" flood-opacity="' + strength.toFixed(3) + '" result="reflectFlood"/>' +
+        'values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 ' + s + ' 0 ' + oneMinus + '" result="transmitMask"/>' +
+        '<feComposite in="' + baseRes + '" in2="transmitMask" operator="in" result="fresnelTransmit"/>' +
+        '<feColorMatrix in="' + mapRes + '" type="matrix" ' +
+        'values="0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 -' + s + ' 0 ' + s + '" result="reflectMask"/>' +
+        '<feFlood flood-color="#fff" result="reflectFlood"/>' +
         '<feComposite in="reflectFlood" in2="reflectMask" operator="in" result="fresnelReflect"/>' +
-        '<feMerge><feMergeNode in="' + baseRes + '"/><feMergeNode in="fresnelReflect"/></feMerge>';
+        '<feMerge><feMergeNode in="fresnelTransmit"/><feMergeNode in="fresnelReflect"/></feMerge>';
     }
 
     if (!hasDispersion) {
